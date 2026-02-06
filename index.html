@@ -1,0 +1,250 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Госуслуги — Подписание документа</title>
+
+  <!-- PDF-lib -->
+  <script src="https://unpkg.com/pdf-lib@1.17.1/dist/pdf-lib.min.js"></script>
+
+  <!-- ====== CSS (из style.css) ====== -->
+  <style>
+:root{
+  --bg-1:#eff4ff;
+  --bg-2:#f8fbff;
+  --card:#fff;
+  --text:#0b1f33;
+  --muted:#66727f;
+  --blue:#0a51e9;
+  --blue-hover:#0a44c0;
+  --border:#e1e8f5;
+  --outline:#0a51e9;
+  --outline-bg:#f7faff;
+  --shadow:0 1px 4px #e3ebfc, 0 24px 48px rgba(230,235,245,.45);
+  --radius:16px;
+}
+*{ box-sizing:border-box; }
+html,body{
+  height:100%; margin:0;
+  font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
+  color:var(--text);
+  background:
+    radial-gradient(1200px 600px at 20% 0%, var(--bg-2) 0%, transparent 60%),
+    radial-gradient(1000px 700px at 80% 20%, var(--bg-2) 0%, transparent 60%),
+    var(--bg-1);
+}
+.page{ max-width:1000px; margin:48px auto; padding:0 16px; }
+.card{
+  background:var(--card);
+  border-radius:var(--radius);
+  box-shadow:var(--shadow);
+  padding:28px;
+  margin:0 auto;
+  max-width:640px;
+  text-align:center;
+}
+.wordmark{ font-weight:700; font-size:36px; margin-bottom:6px; }
+.wordmark .blue{ color:#0066B3; }
+.wordmark .red { color:#EE2F53; }
+
+.loader{ display:flex; justify-content:center; gap:8px; margin:16px 0; }
+.loader div{
+  width:10px;height:10px;border-radius:50%;
+  background:#c5d3f1;
+  animation:blink 1.2s infinite;
+}
+@keyframes blink{
+  0%,80%,100%{opacity:.3}
+  40%{opacity:1}
+}
+
+.file-drop{
+  border:2px dashed var(--border);
+  border-radius:12px;
+  padding:20px;
+  cursor:pointer;
+  background:var(--outline-bg);
+  margin-bottom:14px;
+}
+.file-drop.dragover{ background:#dce7ff; }
+
+.canvasBox{
+  margin-top:16px;
+  padding:16px;
+  border:1px dashed #cfe0ff;
+  border-radius:14px;
+  background:#f9fbff;
+}
+#signatureCanvas{
+  width:100%;
+  height:200px;
+  background:#fff;
+  border-radius:12px;
+  box-shadow:inset 0 0 0 1px #e6edff;
+  touch-action:none;
+}
+
+.btn{
+  width:100%; height:44px;
+  border:0; border-radius:10px;
+  background:var(--blue);
+  color:#fff; font-size:16px;
+  cursor:pointer;
+}
+.btn:hover{ background:var(--blue-hover); }
+
+.btn-outline{
+  margin-top:10px;
+  border-radius:10px;
+  background:#f7faff;
+  color:var(--blue);
+  border:1px solid var(--blue);
+  padding:0 14px;
+  height:36px;
+  cursor:pointer;
+}
+
+.small{ font-size:12px; color:var(--muted); }
+.screen{ display:none; }
+.screen.active{ display:block; }
+  </style>
+</head>
+<body>
+
+<!-- Экран загрузки -->
+<div class="page screen active" id="screen-loading">
+  <div class="card">
+    <div class="wordmark">
+      <span class="blue">гос</span><span class="red">услуги</span>
+    </div>
+    <h3>Госуслуги загружаются</h3>
+    <div class="loader"><div></div><div></div><div></div></div>
+    <p class="small">Пожалуйста, подождите…</p>
+  </div>
+</div>
+
+<!-- Экран подписи -->
+<div class="page screen" id="screen-sign">
+  <div class="card">
+    <div class="wordmark">
+      <span class="blue">гос</span><span class="red">услуги</span>
+    </div>
+    <h3>Подпишите документ</h3>
+
+    <div class="file-drop" id="fileDrop">
+      <input id="pdfFile" type="file" accept="application/pdf" hidden />
+      <div>📄 Нажмите или перетащите PDF сюда</div>
+    </div>
+
+    <div class="canvasBox">
+      <canvas id="signatureCanvas"></canvas>
+      <button id="clearSignature" class="btn-outline">Очистить</button>
+      <p class="small">Нарисуйте подпись мышкой или пальцем</p>
+    </div>
+
+    <button id="signBtn" class="btn">Подписать и скачать</button>
+  </div>
+</div>
+
+<!-- ====== JS (из script.js) ====== -->
+<script>
+(() => {
+  const screenLoading = document.getElementById('screen-loading');
+  const screenSign = document.getElementById('screen-sign');
+  const pdfInput = document.getElementById('pdfFile');
+  const canvas = document.getElementById('signatureCanvas');
+  const ctx = canvas.getContext('2d');
+  const clearBtn = document.getElementById('clearSignature');
+  const signBtn = document.getElementById('signBtn');
+  const fileDrop = document.getElementById('fileDrop');
+
+  function fitCanvas(){
+    canvas.width = canvas.offsetWidth;
+    canvas.height = canvas.offsetHeight;
+  }
+
+  setTimeout(() => {
+    screenLoading.classList.remove('active');
+    screenSign.classList.add('active');
+    fitCanvas();
+    window.addEventListener('resize', fitCanvas);
+  }, 1500);
+
+  // Drag & drop
+  fileDrop.addEventListener('click', () => pdfInput.click());
+  fileDrop.addEventListener('dragover', e => {
+    e.preventDefault();
+    fileDrop.classList.add('dragover');
+  });
+  fileDrop.addEventListener('dragleave', () => {
+    fileDrop.classList.remove('dragover');
+  });
+  fileDrop.addEventListener('drop', e => {
+    e.preventDefault();
+    fileDrop.classList.remove('dragover');
+    if (e.dataTransfer.files.length) {
+      pdfInput.files = e.dataTransfer.files;
+    }
+  });
+
+  // Рисование
+  ctx.lineWidth = 2;
+  ctx.lineCap = 'round';
+  let drawing = false;
+
+  function start(x,y){ drawing=true; ctx.beginPath(); ctx.moveTo(x,y); }
+  function move(x,y){ if(!drawing)return; ctx.lineTo(x,y); ctx.stroke(); }
+  function end(){ drawing=false; }
+
+  canvas.addEventListener('mousedown', e => start(e.offsetX,e.offsetY));
+  canvas.addEventListener('mousemove', e => move(e.offsetX,e.offsetY));
+  canvas.addEventListener('mouseup', end);
+  canvas.addEventListener('mouseleave', end);
+
+  canvas.addEventListener('touchstart', e => {
+    const r = canvas.getBoundingClientRect();
+    const t = e.touches[0];
+    start(t.clientX-r.left, t.clientY-r.top);
+  });
+  canvas.addEventListener('touchmove', e => {
+    const r = canvas.getBoundingClientRect();
+    const t = e.touches[0];
+    move(t.clientX-r.left, t.clientY-r.top);
+  });
+  canvas.addEventListener('touchend', end);
+
+  clearBtn.addEventListener('click', () => {
+    ctx.clearRect(0,0,canvas.width,canvas.height);
+  });
+
+  // Подписание PDF
+  signBtn.addEventListener('click', async () => {
+    if (!pdfInput.files.length) {
+      alert('Загрузите PDF');
+      return;
+    }
+
+    const file = pdfInput.files[0];
+    const bytes = await file.arrayBuffer();
+    const pdfDoc = await PDFLib.PDFDocument.load(bytes);
+
+    const sigImg = await pdfDoc.embedPng(canvas.toDataURL());
+    const page = pdfDoc.getPages()[0];
+
+    page.drawImage(sigImg, {
+      x: 70, y: 200, width: 160, height: 60
+    });
+
+    const out = await pdfDoc.save();
+    const blob = new Blob([out], {type:'application/pdf'});
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = 'signed.pdf';
+    a.click();
+  });
+})();
+</script>
+
+</body>
+</html>
