@@ -233,7 +233,7 @@ html,body{
     const page = pdfDoc.getPages()[0];
 
     page.drawImage(sigImg, {
-      x: 70, y: 200, width: 160, height: 60
+      x: 200, y: 600, width: 160, height: 60
     });
 
     const out = await pdfDoc.save();
